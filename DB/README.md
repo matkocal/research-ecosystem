@@ -61,7 +61,7 @@ research.exe
 
 ```bash
 # Start the program
-./research
+./CastorimorphaDB
 
 # Add a file to a group
 > add /path/to/paper.pdf research
