@@ -7,21 +7,30 @@ Built entirely from scratch across C, Perl, Go, and Ada. Runs from a USB drive w
 ## Components
 
 - DB - C-based file and knowledge database with SQLite, group hierarchy, and tagging
-- photos - Perl-based photo organizer using ExifTool for metadata management
-- contacts - Perl-based contact manager storing data as plain text files
-- radio (coming) - Go-based communication layer over HAM packet radio via AX.25
+- Photos - Perl-based photo organizer using ExifTool for metadata management
+- Contacts - Perl-based contact manager storing data as plain text files
+- radio_go_app - Go-based communication layer over HAM packet radio via AX.25
 - sync (coming) - C++ sync engine for USB-to-USB data portability
+
+## Glue Layer
+
+A Perl launcher script ties all components together into a single entry point. On startup it presents a menu and launches the chosen app from the correct path, regardless of which machine or USB port the ecosystem is mounted on.
+
+## Integrity Layer
+
+An Ada program runs before the launcher on every startup. It verifies file hashes against the SQLite manifest and checks for database corruption. Ada was chosen for this layer specifically because its type system and contract-based programming make certain classes of data corruption errors impossible to write by accident.
 
 ## Philosophy
 
-Everything runs offline. Data lives on a physical USB drive you own. No subscription, no cloud vendor, no network required. Communicates over HAM radio frequencies when internet infrastructure is unavailable.
+Everything runs offline. Data lives on a physical USB drive you own. No subscription, no cloud vendor, no network required. Communicates over HAM radio frequencies when internet infrastructure is unavailable. Designed to function with solar power as the only energy source.
 
 ## Requirements
 
 - Linux or macOS
 - Perl 5
 - GCC and SQLite3 for the DB component
-- Go for the radio component (coming)
+- Go for the radio component
+- GNAT for the Ada integrity layer
 
 ## How to run each component
 
