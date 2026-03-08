@@ -17,15 +17,54 @@ Checks that all critical folders and the database file exist and are in place. I
 
 Ada was chosen for this layer specifically because its type system and contract-based programming make certain classes of errors impossible to write by accident. For a component whose entire job is to verify that data is intact, using a language that enforces correctness at compile time is the right tool.
 
+## Requirements
+
+You need an Ada compiler to build this. Two options:
+
+**Option 1 - Alire (recommended, handles everything automatically):**
+```bash
+# macOS
+brew install alire
+
+# Linux
+# download from https://alire.ada.dev
+```
+
+**Option 2 - GNAT directly (simpler, no package manager):**
+```bash
+# macOS
+brew install gnat
+
+# openSUSE
+sudo zypper install gcc-ada
+
+# Debian/Ubuntu
+sudo apt install gnat
+```
+
 ## How to build
+
+**With Alire:**
 ```bash
 cd integrity
 alr build
 ```
 
-## How to run manually
+**With GNAT directly:**
+```bash
+gnatmake integrity_check.adb
+```
+
+## How to run
+
+**With Alire:**
 ```bash
 alr run integrity
+```
+
+**With GNAT directly:**
+```bash
+./integrity_check
 ```
 
 ## Exit codes
