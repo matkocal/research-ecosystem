@@ -1,0 +1,29 @@
+# Compiled binaries
+DB/CastorimorphaDB
+integrity/integrity
+
+# macOS junk
+.DS_Store
+
+# Runtime data - never goes on GitHub
+DB/data/
+DB/pdf_store/
+Contacts/*.txt
+Photos/*.jpg
+Photos/*.png
+Photos/*.JPG
+Photos/*.PNG
+Photos/*.raw
+Photos/*.RAW
+
+# SQLite databases
+*.db
+
+# Ada build artifacts
+*.ali
+*.o
+integrity/obj/
+integrity/bin/
+
+# Go build artifacts
+radio_go_app/radio_log.txt
