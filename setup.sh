@@ -12,7 +12,7 @@ echo "DB built."
 # build Ada integrity checker
 echo "Building integrity checker..."
 cd "$BASE/integrity"
-gnatmake integrity_check.adb
+gnatmake integrity.adb
 echo "Integrity checker built."
 
 # install Go dependencies for radio app
