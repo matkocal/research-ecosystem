@@ -18,7 +18,7 @@ A Perl launcher script ties all components together into a single entry point. O
 
 ## Integrity Layer
 
-An Ada program runs before the launcher on every startup. It verifies file hashes against the SQLite manifest and checks for database corruption. Ada was chosen for this layer specifically because its type system and contract-based programming make certain classes of data corruption errors impossible to write by accident.
+An Ada program runs before the launcher on every startup. It checks that all critical folders and the database file exist and are in place before the ecosystem is allowed to start. Ada was chosen for this layer specifically because its type system and contract-based programming make certain classes of errors impossible to write by accident.
 
 ## Philosophy
 
