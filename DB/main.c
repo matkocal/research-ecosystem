@@ -1,4 +1,3 @@
-
 #include <stdio.h>    /* Includes standard input/output — gives you printf, fprintf, fgets, fopen, fclose.*/
 #include <stdlib.h>   /* Includes standard library — gives you exit(), memory functions like malloc.*/
 #include <string.h>   /* Includes string functions — gives you strcmp, strcpy, strlen, strrchr, strchr, strcspn, snprintf.*/
@@ -7,15 +6,19 @@
 #include <unistd.h>   /*Includes Unix system calls — gives you access() (check if file exists) and unlink() (delete a file).*/
 #include <sqlite3.h>  /* Includes the SQLite database library — gives you all the sqlite3_* functions to work with the database.*/
 
-#define STORE_DIR "pdf_store/" /* define creates a constant. Everywhere the code writes STORE_DIR, the compiler replaces it with "pdf_store/". \
- It's the folder where files are physically stored. */
+#ifdef __APPLE__
+#include <mach-o/dyld.h>  /* macOS only — gives you _NSGetExecutablePath to find where the binary lives */
+#endif
+
+/* STORE_DIR is now a global variable set at runtime, not a hardcoded constant.
+   This is the portability fix — paths are always relative to the binary, not the working directory. */
+char STORE_DIR[1024];
+char DATA_DIR[1024];
+char DB_PATH[1024];
 
 sqlite3 *db; /* Declares a global variable called db. It's a pointer to the database connection. It's global so every function in the program can access it without passing it around.*/
 
 /* ---------------- FUNCTION PROTOTYPES ---------------- */
-/* These are function prototypes.
-They tell the compiler "this function exists and here is what it takes and returns"
- before the actual function is defined below. This lets functions call each other in any order.*/
 void init_database(void);
 void ensure_dir(const char *path);
 int copy_file(const char *src, const char *dst);
@@ -46,14 +49,51 @@ long file_size(const char *path);
 
 /* ---------------- DATABASE FUNCTIONS ---------------- */
 
-void init_database(void) /*Defines the init_database function. void means it returns nothing.
-void inside the () means it takes no arguments.*/
+void init_database(void)
 {
-    ensure_dir("data"); /* Calls ensure_dir to create the data/ folder if it doesn't exist yet,
-    because the database file will live there.*/
+    /* --- PORTABILITY FIX ---
+       Find the directory where this binary lives, regardless of where it was run from.
+       This means data/ and pdf_store/ are always found next to the binary,
+       not relative to whatever the current working directory happens to be.
+       Works on macOS and Linux. */
 
-    if (sqlite3_open("data/database.db", &db)) /*Tries to open (or create if it doesn't exist) the database file. &db passes the address of the global db variable so SQLite can fill it in.
-    < If it fails (returns non-zero), the if triggers.*/
+    char binary_path[1024];
+
+#ifdef __APPLE__
+    /* macOS: use _NSGetExecutablePath to get the full path to this binary */
+    uint32_t size = sizeof(binary_path);
+    if (_NSGetExecutablePath(binary_path, &size) != 0)
+    {
+        fprintf(stderr, "Could not get executable path\n");
+        exit(1);
+    }
+#else
+    /* Linux: /proc/self/exe is a symlink to the running binary */
+    ssize_t len = readlink("/proc/self/exe", binary_path, sizeof(binary_path) - 1);
+    if (len == -1)
+    {
+        fprintf(stderr, "Could not get executable path\n");
+        exit(1);
+    }
+    binary_path[len] = '\0';
+#endif
+
+    /* Strip the binary filename to get just the directory */
+    char *last_slash = strrchr(binary_path, '/');
+    if (last_slash)
+        *last_slash = '\0';
+
+    /* Build full paths for data/, pdf_store/, and the database file */
+    snprintf(DATA_DIR,  sizeof(DATA_DIR),  "%s/data",             binary_path);
+    snprintf(STORE_DIR, sizeof(STORE_DIR), "%s/pdf_store/",       binary_path);
+    snprintf(DB_PATH,   sizeof(DB_PATH),   "%s/data/database.db", binary_path);
+
+    /* Create folders if they don't exist */
+    ensure_dir(DATA_DIR);
+    ensure_dir(STORE_DIR);
+
+    /* Open the database using the absolute path */
+    if (sqlite3_open(DB_PATH, &db))
     {
         fprintf(stderr, "Cannot open database: %s\n", sqlite3_errmsg(db));
         exit(1);
@@ -194,7 +234,7 @@ int copy_file(const char *src, const char *dst)
 void open_file(const char *filename)
 {
     char store_path[512];
-    snprintf(store_path, sizeof(store_path), STORE_DIR "%s", filename);
+    snprintf(store_path, sizeof(store_path), "%s%s", STORE_DIR, filename);
 
     if (access(store_path, F_OK) != 0)
     {
@@ -211,27 +251,23 @@ void open_file(const char *filename)
     snprintf(command, sizeof(command), "open \"%s\"", store_path);
     result = system(command);
 #elif __linux__
-    // Try xdg-open first
     snprintf(command, sizeof(command), "xdg-open \"%s\" >/dev/null 2>&1 &", store_path);
     result = system(command);
 
     if (result != 0)
     {
-        // Try evince
         snprintf(command, sizeof(command), "evince \"%s\" >/dev/null 2>&1 &", store_path);
         result = system(command);
     }
 
     if (result != 0)
     {
-        // Try okular
         snprintf(command, sizeof(command), "okular \"%s\" >/dev/null 2>&1 &", store_path);
         result = system(command);
     }
 
     if (result != 0)
     {
-        // Try firefox as last resort
         snprintf(command, sizeof(command), "firefox \"%s\" >/dev/null 2>&1 &", store_path);
         result = system(command);
     }
@@ -251,7 +287,6 @@ void open_file(const char *filename)
 
 void add_pdf(const char *path, const char *group_name)
 {
-    // Check if source file exists
     if (access(path, F_OK) != 0)
     {
         printf("Error: Source file not found: %s\n", path);
@@ -259,15 +294,13 @@ void add_pdf(const char *path, const char *group_name)
         return;
     }
 
-    // Extract filename
     const char *filename = strrchr(path, '/');
     filename = filename ? filename + 1 : path;
 
     ensure_dir(STORE_DIR);
 
-    // Copy file to store
     char stored_path[512];
-    snprintf(stored_path, sizeof(stored_path), STORE_DIR "%s", filename);
+    snprintf(stored_path, sizeof(stored_path), "%s%s", STORE_DIR, filename);
 
     if (access(stored_path, F_OK) != 0)
     {
@@ -283,7 +316,6 @@ void add_pdf(const char *path, const char *group_name)
         printf("File already in store: %s\n", filename);
     }
 
-    // Get size from stored file
     long size = file_size(stored_path);
     if (size == -1)
     {
@@ -295,7 +327,6 @@ void add_pdf(const char *path, const char *group_name)
     char time_str[64];
     strftime(time_str, sizeof(time_str), "%Y-%m-%d %H:%M:%S", localtime(&now));
 
-    // Insert file into database
     sqlite3_stmt *stmt;
     const char *sql = "INSERT OR IGNORE INTO files (name, size, created_at) VALUES (?, ?, ?)";
 
@@ -313,10 +344,8 @@ void add_pdf(const char *path, const char *group_name)
         sqlite3_finalize(stmt);
     }
 
-    // Create group if it doesn't exist
     create_group(group_name);
 
-    // Link file to group
     int file_id = get_file_id(filename);
     int group_id = get_group_id(group_name);
 
@@ -452,12 +481,10 @@ void list_group_files(const char *group)
 
 void show_group_hierarchy(int group_id, const char *group_name, int indent_level)
 {
-    // Print group with indentation
     for (int i = 0; i < indent_level; i++)
         printf("  ");
     printf("📁 %s\n", group_name);
 
-    // Print files in this group
     const char *files_sql =
         "SELECT f.name FROM files f "
         "JOIN file_groups fg ON f.id = fg.file_id "
@@ -479,7 +506,6 @@ void show_group_hierarchy(int group_id, const char *group_name, int indent_level
         sqlite3_finalize(files_stmt);
     }
 
-    // Find and display child groups
     const char *child_sql =
         "SELECT g.id, g.name FROM groups g "
         "JOIN group_hierarchy gh ON g.id = gh.child_id "
@@ -507,7 +533,6 @@ void show_all_groups_with_files(void)
     printf("         ALL GROUPS AND FILES          \n");
     printf("========================================\n\n");
 
-    // Show only top-level groups (those not children of any other group)
     const char *sql =
         "SELECT id, name FROM groups "
         "WHERE id NOT IN (SELECT child_id FROM group_hierarchy) "
@@ -535,7 +560,6 @@ void show_all_groups_with_files(void)
         printf("No groups created yet.\n");
     else
     {
-        // Count all groups including nested ones
         const char *count_sql = "SELECT COUNT(*) FROM groups";
         sqlite3_stmt *count_stmt;
         if (sqlite3_prepare_v2(db, count_sql, -1, &count_stmt, 0) == SQLITE_OK)
@@ -562,7 +586,6 @@ void delete_file(const char *filename)
         return;
     }
 
-    // Delete from database (CASCADE will handle file_groups)
     sqlite3_stmt *stmt;
     const char *sql = "DELETE FROM files WHERE name = ?";
 
@@ -572,9 +595,8 @@ void delete_file(const char *filename)
 
         if (sqlite3_step(stmt) == SQLITE_DONE)
         {
-            // Delete physical file
             char store_path[512];
-            snprintf(store_path, sizeof(store_path), STORE_DIR "%s", filename);
+            snprintf(store_path, sizeof(store_path), "%s%s", STORE_DIR, filename);
             unlink(store_path);
 
             printf("Deleted file: %s\n", filename);
@@ -593,7 +615,6 @@ void delete_group(const char *group)
         return;
     }
 
-    // Delete from database (CASCADE will handle file_groups)
     sqlite3_stmt *stmt;
     const char *sql = "DELETE FROM groups WHERE name = ?";
 
@@ -681,14 +702,12 @@ void link_group_to_parent(const char *child_group, const char *parent_group)
         return;
     }
 
-    // Check if trying to link group to itself
     if (child_id == parent_id)
     {
         printf("Cannot link a group to itself.\n");
         return;
     }
 
-    // Add to group_hierarchy
     sqlite3_stmt *stmt;
     const char *sql = "INSERT OR IGNORE INTO group_hierarchy (child_id, parent_id) VALUES (?, ?)";
 
@@ -862,14 +881,12 @@ void rename_file(const char *old_name, const char *new_name)
         return;
     }
 
-    // Check if new name already exists
     if (get_file_id(new_name) != -1)
     {
         printf("Error: A file with name '%s' already exists\n", new_name);
         return;
     }
 
-    // Rename in database
     sqlite3_stmt *stmt;
     const char *sql = "UPDATE files SET name = ? WHERE id = ?";
 
@@ -880,10 +897,9 @@ void rename_file(const char *old_name, const char *new_name)
 
         if (sqlite3_step(stmt) == SQLITE_DONE)
         {
-            // Rename physical file
             char old_path[512], new_path[512];
-            snprintf(old_path, sizeof(old_path), STORE_DIR "%s", old_name);
-            snprintf(new_path, sizeof(new_path), STORE_DIR "%s", new_name);
+            snprintf(old_path, sizeof(old_path), "%s%s", STORE_DIR, old_name);
+            snprintf(new_path, sizeof(new_path), "%s%s", STORE_DIR, new_name);
 
             if (rename(old_path, new_path) == 0)
                 printf("Renamed '%s' to '%s'\n", old_name, new_name);
@@ -904,7 +920,6 @@ void show_file_info(const char *filename)
         return;
     }
 
-    // Get file info
     const char *file_sql = "SELECT name, size, created_at, starred FROM files WHERE id = ?";
     sqlite3_stmt *stmt;
 
@@ -931,12 +946,11 @@ void show_file_info(const char *filename)
         printf("Starred: %s\n", starred ? "Yes ⭐" : "No");
 
         char store_path[512];
-        snprintf(store_path, sizeof(store_path), STORE_DIR "%s", name);
+        snprintf(store_path, sizeof(store_path), "%s%s", STORE_DIR, name);
         printf("Path: %s\n", store_path);
 
         sqlite3_finalize(stmt);
 
-        // Get groups this file belongs to
         const char *groups_sql =
             "SELECT g.name FROM groups g "
             "JOIN file_groups fg ON g.id = fg.group_id "
@@ -1017,29 +1031,26 @@ void interactive_shell(void)
         char *argv[10];
         int argc = 0;
 
-        // Parse command (first word)
         char *p = input;
         while (*p == ' ')
-            p++; // skip leading spaces
+            p++;
         argv[argc++] = p;
         while (*p && *p != ' ')
             p++;
         if (*p)
             *p++ = 0;
 
-        // For commands that need the rest as one argument (like open with spaces)
         while (*p == ' ')
-            p++; // skip spaces
+            p++;
         if (*p && argc < 10)
         {
-            argv[argc++] = p; // Rest of line as one argument
+            argv[argc++] = p;
         }
 
         if (strcmp(argv[0], "exit") == 0)
             break;
         else if (strcmp(argv[0], "add") == 0 && argc >= 2)
         {
-            // For add: split on LAST space - everything before is path, last word is group
             char *rest = argv[1];
             char *last_space = strrchr(rest, ' ');
 
@@ -1075,7 +1086,6 @@ void interactive_shell(void)
             delete_group(argv[1]);
         else if (strcmp(argv[0], "rmgroup") == 0 && argc >= 2)
         {
-            // Split into filename and group
             char *filename = argv[1];
             char *group = strchr(argv[1], ' ');
             if (group)
@@ -1091,7 +1101,6 @@ void interactive_shell(void)
         }
         else if (strcmp(argv[0], "addto") == 0 && argc >= 2)
         {
-            // Split into filename and group
             char *rest = argv[1];
             char *filename = rest;
             char *group = strchr(rest, ' ');
@@ -1108,7 +1117,6 @@ void interactive_shell(void)
         }
         else if (strcmp(argv[0], "linkgroup") == 0 && argc >= 2)
         {
-            // Split into child and parent group
             char *rest = argv[1];
             char *child = rest;
             char *parent = strchr(rest, ' ');
@@ -1125,7 +1133,6 @@ void interactive_shell(void)
         }
         else if (strcmp(argv[0], "unlinkgroup") == 0 && argc >= 2)
         {
-            // Split into child and parent group
             char *rest = argv[1];
             char *child = rest;
             char *parent = strchr(rest, ' ');
@@ -1152,7 +1159,6 @@ void interactive_shell(void)
             list_starred_files();
         else if (strcmp(argv[0], "rename") == 0 && argc >= 2)
         {
-            // Split into old name and new name
             char *rest = argv[1];
             char *old_name = rest;
             char *new_name = strchr(rest, ' ');
@@ -1217,7 +1223,6 @@ int main(void)
 {
     print_intro();
     init_database();
-    ensure_dir(STORE_DIR);
 
     interactive_shell();
 
