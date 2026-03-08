@@ -46,13 +46,18 @@ sudo apt install gnat
 
 **With Alire:**
 ```bash
+# first time only - creates the .toml project file
+alr init --bin integrity
+
+# then copy integrity_check.adb into the src/ folder it creates, then:
 cd integrity
 alr build
 ```
 
-**With GNAT directly:**
+**With GNAT directly (no .toml needed):**
 ```bash
 gnatmake integrity_check.adb
+```
 ```
 
 ## How to run
