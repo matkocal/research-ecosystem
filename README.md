@@ -7,7 +7,7 @@ Built entirely from scratch across C, Perl, Go, and Ada. Runs from a USB drive w
 ## Components
 
 - DB - C-based file and knowledge database with SQLite, group hierarchy, and tagging
-- Photos - Perl-based photo organizer using ExifTool for metadata management
+- Photos - Perl-based photo manager for storing, organizing and viewing image files
 - Contacts - Perl-based contact manager storing data as plain text files
 - radio_go_app - Go-based communication layer over HAM packet radio via AX.25
 - sync (coming) - C++ sync engine for USB-to-USB data portability
